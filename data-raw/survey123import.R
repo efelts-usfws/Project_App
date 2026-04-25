@@ -618,7 +618,6 @@ project_metrics.summary <- implementations.df %>%
             enhancement_structures=sum(enhancement_structure_count,na.rm=T),
             riparian_area=sum(riparian_affected_metric,na.rm=T),
             streambank_linearfeet=sum(streambank_affected_metric,na.rm=T),
-            riparian_acres=sum(riparian_affected_metric,na.rm=T),
             flow_restored_miles=sum(flowmanagement_metric,na.rm=T),
             wetland_acres=sum(wetland_affected_metric,na.rm=T),
             .groups="drop") %>% 
