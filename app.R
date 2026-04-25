@@ -120,13 +120,13 @@ leaflet_base <- leaflet() %>%
     group = "Counties",
     popup = ~ str_c(NAME, "County", sep = " ")
   ) %>%
-  addPolygons(
-    data = huc8.sf,
-    fill = "grey", color = "black",
-    fillOpacity = 0.1,
-    group = "HUC8 Watersheds",
-    popup = ~ str_c(name, "Watershed", sep = " ")
-  ) %>%
+  # addPolygons(
+  #   data = huc8.sf,
+  #   fill = "grey", color = "black",
+  #   fillOpacity = 0.1,
+  #   group = "HUC8 Watersheds",
+  #   popup = ~ str_c(name, "Watershed", sep = " ")
+  # ) %>%
   addPolygons(
     data = lakes.sf,
     label = ~ str_c(name),
@@ -143,15 +143,14 @@ leaflet_base <- leaflet() %>%
       "Streams", "Lakes/Reservoirs",
       "IDFG Regions",
       "FMP Drainages",
-      "Counties",
-      "HUC8 Watersheds"
+      "Counties"
     ),
     options = layersControlOptions(collapsed = FALSE)
   ) %>%
   hideGroup(c(
     "IDFG Regions",
     "FMP Drainages",
-    "Counties", "HUC8 Watersheds"
+    "Counties"
   ))
 leaflet_base
 
@@ -166,6 +165,59 @@ ui <- page_navbar(
   title = "IDFG Fish Habitat Program Dashboard",
   theme = bs_theme(bootswatch = "flatly"),
   id = "nav",
+  header = tags$head(
+    tags$style(HTML("
+  /* Compact text inside bslib value boxes */
+  .bslib-value-box .value-box-title {
+    font-size: 0.75rem !important;
+  }
+
+  .bslib-value-box .value-box-value {
+    font-size: 0.9rem !important;
+  }
+
+  .bslib-value-box .value-box-subtitle,
+  .bslib-value-box p {
+    font-size: 0.7rem !important;
+  }
+
+  /* Optionally shrink icon */
+  .bslib-value-box .value-box-showcase {
+    font-size: 1.2rem !important;
+  }
+
+    /* Sticky selected fish card */
+  .sticky-selected {
+    position: sticky;
+    top: 0.5rem;
+    z-index: 1000;
+
+    /* Make DT header sticky within its scroll container */
+.dataTables_scrollHead {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 10 !important;
+}
+
+/* Ensure the body is the scrolling element */
+.dataTables_scrollBody {
+  overflow-y: auto !important;
+}
+  }
+
+")),
+    tags$script(src = "https://unpkg.com/leaflet-easyprint@2.1.9/dist/bundle.js"),
+    tags$style(HTML("
+  .bslib-value-box .value-box-title,
+  .bslib-value-box .bslib-value-box-title,
+  .bslib-value-box .card-title,
+  .bslib-value-box h2,
+  .bslib-value-box h3,
+  .bslib-value-box h4 {
+    font-weight: 700 !important;
+  }
+"))
+  ),
   sidebar = sidebar(
     width = 300,
     id = "sb",
@@ -257,6 +309,7 @@ ui <- page_navbar(
 # })
 
 server <- function(input, output, session) {
+  
   projects_reactive <- reactive({
     req(input$primary_species_filter, input$idfg_region_filter, input$projecttype_filter)
 
@@ -266,9 +319,11 @@ server <- function(input, output, session) {
         idfg_region %in% input$idfg_region_filter
       ) %>%
       rowwise() %>%
-      filter(any(trimws(unlist(strsplit(project_category, ";"))) %in% input$projecttype_filter)) %>%
+      filter(any(trimws(unlist(strsplit(project_category, ","))) %in% input$projecttype_filter)) %>%
       ungroup()
   })
+  
+
 
   output$project_map <- renderLeaflet({
     dat <- projects_reactive()
