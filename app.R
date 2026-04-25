@@ -261,6 +261,17 @@ ui <- page_navbar(
   ),
   nav_panel(
     "Main",
+    layout_columns(
+      col_widths = c(4,4,4),
+      value_box(
+        title="# of Projects",
+        textOutput("project_count")
+      ),
+      value_box(
+        title="Evaluation Metrics",
+        textOutput("eval_metrics")
+      )
+    ),
     page_fillable(
       layout_columns(
         col_widths = c(8, 4),
@@ -323,6 +334,29 @@ server <- function(input, output, session) {
       ungroup()
   })
   
+  # project count after filters to 
+  # render into the value box 
+  
+  output$project_count <- renderText({
+    
+    dat <- projects_reactive()
+    
+    nrow(dat)
+    
+  })
+  
+  # value box with quantified metrics
+  
+  output$eval_metrics <- renderText({
+    
+    dat <- projects_reactive()
+    
+    barrier_count <- sum(dat$barriers_removed,na.rm=T)
+    
+    str_c("Barriers Removed: ", barrier_count)
+    
+    
+  })
 
 
   output$project_map <- renderLeaflet({
