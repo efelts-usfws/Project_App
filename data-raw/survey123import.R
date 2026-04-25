@@ -333,7 +333,8 @@ projects.df <- projects.spatialjoin1 %>%
   left_join(stream_join,by=c("globalid"="project_id","huc8")) %>% 
   left_join(staff_current,by=c("idfg_staff"="old_survey")) %>% 
   select(-c(idfg_staff,position)) %>% 
-  rename(idfg_staff=current)
+  rename(idfg_staff=current) %>% 
+  mutate(managing_org=str_replace_all(managing_org,"_"," "))
 
 # now pull in the photo metadata and download the photos
 
@@ -378,7 +379,11 @@ photo_reference.table <- photorepeat.df %>%
 
 # need dummy project with isolate project type
 # to be able to get individual selections
-# within the EB platform
+# within the EB platform; this is only needed
+# if trying to use in EB, so first export the
+# existing version for use in Shiny app
+
+
 
 dummy_projects.sf <- tibble(project_category=c("Beaver Dam Analogues","Channel Restoration",
                                                "Erosion Control and Sediment Management",
@@ -674,8 +679,11 @@ projects_shiny.df <- projects.df %>%
   mutate(project_state=if_else(is.na(project_state),"Pre-Implementation",
                                project_state)) %>% 
   left_join(project_funding_summary,by="project_name") %>% 
-  left_join(project_metrics.summary,by="project_name")
+  left_join(project_metrics.summary,by="project_name") %>% 
+  filter(!is.na(globalid))
 
 # export
 
-saveRDS(projects_shiny.df,"shiny_projects")
+saveRDS(projects_shiny.df,"shiny_pieces/project_table")
+
+saveRDS(photos.bind,"shiny_pieces/photo_table")
