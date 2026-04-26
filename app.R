@@ -42,6 +42,9 @@ projects.dat <- read_rds("shiny_pieces/project_table") %>%
   ))
 
 
+
+
+
 # make a vector of project types
 
 projecttype_vector <- projects.dat %>%
@@ -168,10 +171,18 @@ ui <- page_navbar(
   header = tags$head(
     tags$style(HTML("
 
-  .bslib-value-box .value-box-value {
-    font-size: 0.8rem !important;
-  }
+ 
 
+  .bslib-value-box .value-box-title {
+    font-weight: 700 !important;
+    text-align: center !important;
+    width: 100%;
+  }
+  
+   .bslib-value-box .value-box-value {
+    font-size: 0.8rem !important;
+    text-align: center !important;
+  }
 
   .bslib-value-box .value-box-subtitle,
   .bslib-value-box p {
@@ -232,11 +243,11 @@ ui <- page_navbar(
   nav_panel(
     "Main",
     layout_columns(
-      col_widths = c(4,4,4),
+      col_widths = c(3,6,3),
       class="g-2",
       value_box(
-        title="# of Projects",
-        textOutput("project_count"),
+        title="Projects Overview",
+       uiOutput("project_overview"),
         max_height = "200px"
       ),
       value_box(
@@ -317,64 +328,133 @@ server <- function(input, output, session) {
   
   # project count after filters to 
   # render into the value box 
-  
-  output$project_count <- renderText({
-    
+  output$project_overview <- renderUI({
     dat <- projects_reactive()
     
-    nrow(dat)
+    project_count <- nrow(dat)
+    completed_count <- sum(dat$project_status == "Completed", na.rm = TRUE)
+    active_count <- sum(dat$project_status == "Active", na.rm = TRUE)
     
-  })
-  
-  # value box with quantified metrics
-  
-  output$eval_metrics <- renderUI({
+    n_partners <- dat |>
+      select(partner_agency) |>
+      separate_rows(partner_agency, sep = ",") |>
+      mutate(partner_agency = trimws(partner_agency)) |>
+      filter(!is.na(partner_agency), partner_agency != "") |>
+      distinct(partner_agency) |>
+      nrow()
     
-    dat <- projects_reactive()
-    
-    barrier_count <- sum(dat$barriers_removed,na.rm=T)
-    
-    miles_reconnected <- round(sum(dat$stream_miles_reconnected,na.rm=T))
-    
-    floodplain_reconnect <- round(sum(dat$floodplain_reconnect,na.rm=T))
-    
-    enhancements <- round(sum(dat$enhancement_structures,na.rm=T))
-    
-    riparian_acres <- round(sum(dat$riparian_area,na.rm=T))
-    
-    streambank_feet <- round(sum(dat$streambank_linearfeet,na.rm=T))
-    
-    flow_restored <- round(sum(dat$flow_restored_miles,na.rm=T))
-    
-    wetland_acres <- round(sum(dat$wetland_acres,na.rm=T))
-    
-    HTML(str_c(barrier_count," Barriers Removed",
-          "<br>",
-          miles_reconnected," Stream Miles Reconnected",
-          "<br>",
-          floodplain_reconnect," Acres of Floodplain Reconnected",
-          "<br>",
-          enhancements, " Enhancement Structures Placed",
-          "<br>",
-          riparian_acres, " Acres of Riparian Area Affected",
-          "<br>",
-          streambank_feet, " Linear Feet of Streambank Stabilized",
-          "<br>",
-          flow_restored, " Miles of Stream Restored to Perennial Flow",
-          "<br>",
-          wetland_acres, " Acres of Wetland Affected")
+    div(
+      style = "
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      text-align: center;
+    ",
+      
+      tags$div(
+        style = "font-size: 1rem; font-weight: 700;",
+        str_c(scales::comma(project_count), " Projects")
+      ),
+      
+      tags$div(
+        style = "
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        flex-wrap: wrap;
+        font-size: 1rem;
+      ",
+        tags$span(
+          class = "badge rounded-pill",
+          style= paste0(
+            "background-color:", status_pal("Active"),
+            "; color: white;"
+          ),
+          str_c(scales::comma(active_count), " Active")
+        ),
+        tags$span(
+          class = "badge rounded-pill",
+          style= paste0(
+            "background-color:", status_pal("Completed"),
+            "; color: white;"
+          ),
+          str_c(scales::comma(completed_count), " Completed")
+        )
+      ),
+      
+      tags$div(
+        style = "font-size: 0.8rem;",
+        str_c(scales::comma(n_partners), " Partners")
+      )
     )
-    
   })
 
+  output$eval_metrics <- renderUI({
+    dat <- projects_reactive()
+    
+    metrics <- tibble::tribble(
+      ~metric, ~value,
+      "Barriers Removed", sum(dat$barriers_removed, na.rm = TRUE),
+      "Stream Miles Reconnected", round(sum(dat$stream_miles_reconnected, na.rm = TRUE)),
+      "Acres Floodplain Reconnected", round(sum(dat$floodplain_reconnect, na.rm = TRUE)),
+      "Enhancement Structures", round(sum(dat$enhancement_structures, na.rm = TRUE)),
+      "Riparian Acres", round(sum(dat$riparian_area, na.rm = TRUE)),
+      "Streambank Feet", round(sum(dat$streambank_linearfeet, na.rm = TRUE)),
+      "Flow Restored Miles", round(sum(dat$flow_restored_miles, na.rm = TRUE)),
+      "Wetland Acres", round(sum(dat$wetland_acres, na.rm = TRUE))
+    )
+    
+    tags$div(
+      style = "
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 12px;
+      font-size: 0.75rem;
+    ",
+      purrr::pmap(
+        metrics,
+        \(metric, value) {
+          tags$div(
+            tags$b(scales::comma(value)),
+            tags$span(paste0(' ', metric))
+          )
+        }
+      )
+    )
+  })
+  
   output$funding_summary <- renderUI({
     
     dat <- projects_reactive()
     
-    fund_amount <- sum(dat$award_amount,na.rm=T)
+    fund_amount <- sum(dat$award_amount, na.rm = TRUE)
     
-    str_c(dollar(fund_amount), " Awarded")
+    n_funders <- dat |>
+      select(funding_source) |>
+      separate_rows(funding_source, sep = ";") |>
+      mutate(funding_source = trimws(funding_source)) |>
+      filter(!is.na(funding_source), funding_source != "") |>
+      distinct(funding_source) |>
+      nrow()
     
+    tags$div(
+      style = "
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      text-align: center;
+    ",
+      tags$div(
+        style = "font-size: 1rem; font-weight: 700;",
+        str_c(scales::dollar(fund_amount, accuracy = 1), " Awarded")
+      ),
+      tags$div(
+        style = "font-size: 0.8rem;",
+        str_c(scales::comma(n_funders), " Funding Sources")
+      )
+    )
   })
 
   output$project_map <- renderLeaflet({
@@ -432,8 +512,8 @@ server <- function(input, output, session) {
         )
       ),
       p(tags$b("Project Type: "), x$project_category),
-      p(tags$b("IDFG Region: "), x$region_name),
-      p(tags$b("FMP Drainage: "), "placeholder"),
+      p(tags$b("IDFG Region: "), x$idfg_region),
+      p(tags$b("FMP Drainage: "), x$fmp_drainage),
       p(tags$b("County: "), x$county),
       p(tags$b("Primary Waterbody: "), x$stream_name),
       p(tags$b("Primary Species: "), x$primary_species),
