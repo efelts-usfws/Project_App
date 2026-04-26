@@ -193,7 +193,15 @@ ui <- page_navbar(
   max-height: calc(100vh - 220px);
   overflow-y: auto;
   padding-right: 0.5rem;
-}
+  }
+
+  .modal-backdrop {
+    z-index: 20000 !important;
+  }
+
+  .modal {
+    z-index: 20001 !important;
+  }
 
 
 ")),
