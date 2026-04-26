@@ -550,25 +550,24 @@ server <- function(input, output, session) {
         group = "selection"
       )
   })
-
   output$project_gallery_ui <- renderUI({
     if (is.null(selected_project())) {
       return(tags$p("Click a project on the map to view photos."))
     }
-
+    
     photo_dat <- selected_project_photos()
-
+    
     if (nrow(photo_dat) == 0) {
       return(tags$p("No photos available for this project."))
     }
-
+    
     tagList(
       h5("Photos"),
       div(
         style = "display:grid; grid-template-columns:1fr 1fr; gap:12px;",
         lapply(seq_len(nrow(photo_dat)), function(i) {
           this_photo <- photo_dat[i, ]
-
+          
           card(
             style = "padding:8px;",
             actionLink(
@@ -595,39 +594,15 @@ server <- function(input, output, session) {
       )
     )
   })
-
-  observeEvent(selected_project(),
-    {
-      photo_dat <- selected_project_photos()
-      if (nrow(photo_dat) == 0) {
-        return()
-      }
-
-      for (i in seq_len(nrow(photo_dat))) {
-        local({
-          ii <- i
-          observeEvent(input[[paste0("photo_click_", ii)]],
-            {
-              current_photo_index(ii)
-            },
-            ignoreInit = TRUE
-          )
-        })
-      }
-    },
-    ignoreInit = TRUE
-  )
-
-  observe({
-    req(current_photo_index())
+  
+  # helper function to show modal
+  show_photo_modal <- function(i) {
     photo_dat <- selected_project_photos()
     req(nrow(photo_dat) > 0)
-
-    i <- current_photo_index()
     req(i >= 1, i <= nrow(photo_dat))
-
+    
     this_photo <- photo_dat[i, ]
-
+    
     showModal(
       modalDialog(
         size = "l",
@@ -635,13 +610,7 @@ server <- function(input, output, session) {
         footer = NULL,
         tags$img(
           src = file.path("project_photos", this_photo$photo_file),
-          style = "display: block;
-                    margin-left: auto;
-                    margin-right: auto;
-                    max-width: 100%;
-                    max-height: 60vh;
-                    object-fit: contain;
-                    "
+          style = "display:block; margin:auto; max-width:100%; max-height:60vh; object-fit:contain;"
         ),
         tags$div(
           style = "margin-top:12px;",
@@ -663,25 +632,50 @@ server <- function(input, output, session) {
         )
       )
     )
-  })
-
+  }
+  
+  # set up observers for photo clicks
+  observeEvent(selected_project(), {
+    photo_dat <- selected_project_photos()
+    if (nrow(photo_dat) == 0) return()
+    
+    for (i in seq_len(nrow(photo_dat))) {
+      local({
+        ii <- i
+        observeEvent(input[[paste0("photo_click_", ii)]], {
+          current_photo_index(ii)
+          show_photo_modal(ii)
+        }, ignoreInit = TRUE)
+      })
+    }
+  }, ignoreInit = TRUE)
+  
+  # next button
   observeEvent(input$next_photo, {
     req(current_photo_index())
     photo_dat <- selected_project_photos()
     req(nrow(photo_dat) > 0)
-
+    
     i <- current_photo_index()
-    current_photo_index(ifelse(i == nrow(photo_dat), 1, i + 1))
+    new_i <- ifelse(i == nrow(photo_dat), 1, i + 1)
+    
+    current_photo_index(new_i)
+    show_photo_modal(new_i)
   })
-
+  
+  # previous button
   observeEvent(input$prev_photo, {
     req(current_photo_index())
     photo_dat <- selected_project_photos()
     req(nrow(photo_dat) > 0)
-
+    
     i <- current_photo_index()
-    current_photo_index(ifelse(i == 1, nrow(photo_dat), i - 1))
+    new_i <- ifelse(i == 1, nrow(photo_dat), i - 1)
+    
+    current_photo_index(new_i)
+    show_photo_modal(new_i)
   })
+
 }
 
 
