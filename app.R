@@ -321,9 +321,27 @@ ui <- page_navbar(
         ),
         card(
           card_header("Selected Project"),
-          uiOutput("selected_project_ui"),
-          uiOutput("project_gallery_ui"),
-          height="700px",
+          navset_card_tab(
+            nav_panel(
+              "Overview",
+              uiOutput("selected_project_ui"),
+              hr(),
+              uiOutput("project_gallery_ui")
+            ),
+            nav_panel(
+              "Permitting",
+              uiOutput("project_permitting_ui")
+            ),
+            nav_panel(
+              "Timeline",
+              uiOutput("project_timeline_ui")
+            ),
+            nav_panel(
+              "Funding",
+              uiOutput("project_funding_ui")
+            )
+          ),
+          height = "700px",
           max_height = "700px",
           full_screen = TRUE
         )
