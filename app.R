@@ -213,6 +213,7 @@ ui <- page_navbar(
     collapsible = T,
     open = T,
     accordion(
+      open=c("Project Filters","Individual Projects"),
       accordion_panel(
         "Project Filters",
         pickerInput("primary_species_filter",
@@ -245,6 +246,10 @@ ui <- page_navbar(
             `live-search` = TRUE
           )
         )
+      ),
+      accordion_panel(
+        "Individual Projects",
+        uiOutput("ind_project_filter")
       )
     )
   ),
@@ -293,32 +298,6 @@ ui <- page_navbar(
 
 # build the server
 
-# observeEvent(input$next_photo, {
-#   req(current_photo_index())
-#
-#   photo_dat <- selected_project_photos()
-#   req(nrow(photo_dat) > 0)
-#
-#   i <- current_photo_index()
-#
-#   if (i < nrow(photo_dat)) {
-#     current_photo_index(i + 1)
-#   }
-# })
-#
-# observeEvent(input$prev_photo, {
-#   req(current_photo_index())
-#
-#   photo_dat <- selected_project_photos()
-#   req(nrow(photo_dat) > 0)
-#
-#   i <- current_photo_index()
-#
-#   if (i > 1) {
-#     current_photo_index(i - 1)
-#   }
-# })
-
 server <- function(input, output, session) {
   
   projects_reactive <- reactive({
@@ -332,6 +311,38 @@ server <- function(input, output, session) {
       rowwise() %>%
       filter(any(trimws(unlist(strsplit(project_category, ","))) %in% input$projecttype_filter)) %>%
       ungroup()
+  })
+  
+  # render picker input of project names that
+  # are included given the filters selected
+  
+  picker_just_rendered <- reactiveVal(FALSE)
+  
+  output$ind_project_filter <- renderUI({
+    
+    req(projects_reactive())
+    
+    dat <- projects_reactive()
+    
+    project_vector <- dat %>% 
+      arrange(project_name) %>% 
+      pull(project_name)
+    
+    picker_just_rendered(TRUE) 
+    
+    pickerInput(
+      "project_filter",
+      label = "Choose a Project",
+      choices = project_vector,
+      selected = character(0),
+      multiple = FALSE,
+      options = list(
+        `live-search` = TRUE,
+        title = "Search or choose a project",
+        `none-selected-text` = "Search or choose a project"
+      )
+    )
+    
   })
   
   # project count after filters to 
@@ -488,7 +499,7 @@ server <- function(input, output, session) {
 
   selected_project_data <- reactive({
     req(selected_project())
-    projects.dat %>% filter(project_name == selected_project())
+    projects_reactive() %>% filter(project_name == selected_project())
   })
 
   output$selected_project_ui <- renderUI({
@@ -558,6 +569,36 @@ server <- function(input, output, session) {
         group = "selection"
       )
   })
+  
+  observeEvent(input$project_filter, {
+    req(nzchar(input$project_filter))
+    
+    # skip if this fire was caused by a fresh render
+    if (isTRUE(picker_just_rendered())) {
+      picker_just_rendered(FALSE)
+      return()
+    }
+    
+    selected_project(input$project_filter)
+    current_photo_index(NULL)
+    
+    selected_data <- projects.dat |>
+      filter(project_name == input$project_filter)
+    
+    leafletProxy("project_map") |>
+      clearGroup("selection") |>
+      addCircleMarkers(
+        data = selected_data,
+        fillColor = NA,
+        color = "red",
+        radius = 10,
+        weight = 3,
+        group = "selection"
+      )
+  }, ignoreInit = TRUE)
+  
+  
+  
   output$project_gallery_ui <- renderUI({
     if (is.null(selected_project())) {
       return(tags$p("Click a project on the map to view photos."))
