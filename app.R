@@ -143,13 +143,6 @@ leaflet_base <- leaflet() %>%
     group = "Counties",
     popup = ~ str_c(NAME, "County", sep = " ")
   ) %>%
-  # addPolygons(
-  #   data = huc8.sf,
-  #   fill = "grey", color = "black",
-  #   fillOpacity = 0.1,
-  #   group = "HUC8 Watersheds",
-  #   popup = ~ str_c(name, "Watershed", sep = " ")
-  # ) %>%
   addPolygons(
     data = lakes.sf,
     label = ~ str_c(name),
@@ -174,7 +167,15 @@ leaflet_base <- leaflet() %>%
     "IDFG Regions",
     "FMP Drainages",
     "Counties"
-  ))
+  )) %>% 
+  addMiniMap(
+    tiles = providers$OpenStreetMap.Mapnik,
+    toggleDisplay = TRUE,
+    position = "bottomright",
+    width = 180,
+    height = 180,
+    zoomLevelOffset = -6
+  )
 leaflet_base
 
 status_pal <- colorFactor(
