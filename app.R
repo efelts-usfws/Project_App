@@ -9,7 +9,7 @@ library(leaflet.extras2)
 library(bslib)
 library(bsicons)
 library(sf)
-
+library(scales)
 
 photos.dat <- read_rds("shiny_pieces/photo_table")
 
@@ -167,56 +167,26 @@ ui <- page_navbar(
   id = "nav",
   header = tags$head(
     tags$style(HTML("
-  /* Compact text inside bslib value boxes */
-  .bslib-value-box .value-box-title {
-    font-size: 0.75rem !important;
-  }
 
   .bslib-value-box .value-box-value {
-    font-size: 0.9rem !important;
+    font-size: 0.8rem !important;
   }
+
 
   .bslib-value-box .value-box-subtitle,
   .bslib-value-box p {
     font-size: 0.7rem !important;
   }
-
-  /* Optionally shrink icon */
-  .bslib-value-box .value-box-showcase {
-    font-size: 1.2rem !important;
-  }
-
-    /* Sticky selected fish card */
-  .sticky-selected {
-    position: sticky;
-    top: 0.5rem;
-    z-index: 1000;
-
-    /* Make DT header sticky within its scroll container */
-.dataTables_scrollHead {
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 10 !important;
+  
+  .selected-project-scroll {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  padding-right: 0.5rem;
 }
 
-/* Ensure the body is the scrolling element */
-.dataTables_scrollBody {
-  overflow-y: auto !important;
-}
-  }
 
 ")),
-    tags$script(src = "https://unpkg.com/leaflet-easyprint@2.1.9/dist/bundle.js"),
-    tags$style(HTML("
-  .bslib-value-box .value-box-title,
-  .bslib-value-box .bslib-value-box-title,
-  .bslib-value-box .card-title,
-  .bslib-value-box h2,
-  .bslib-value-box h3,
-  .bslib-value-box h4 {
-    font-weight: 700 !important;
-  }
-"))
+    tags$script(src = "https://unpkg.com/leaflet-easyprint@2.1.9/dist/bundle.js")
   ),
   sidebar = sidebar(
     width = 300,
@@ -263,13 +233,21 @@ ui <- page_navbar(
     "Main",
     layout_columns(
       col_widths = c(4,4,4),
+      class="g-2",
       value_box(
         title="# of Projects",
-        textOutput("project_count")
+        textOutput("project_count"),
+        max_height = "200px"
       ),
       value_box(
         title="Evaluation Metrics",
-        textOutput("eval_metrics")
+        uiOutput("eval_metrics"),
+        max_height = "200px"
+      ),
+      value_box(
+        title="Funding Summary",
+        uiOutput("funding_summary"),
+        max_height = "200px"
       )
     ),
     page_fillable(
@@ -277,13 +255,16 @@ ui <- page_navbar(
         col_widths = c(8, 4),
         card(card_header("Project Map"),
           leafletOutput("project_map"),
+          height="700px",
+          max_height = "700px",
           full_screen = T
         ),
         card(
           card_header("Selected Project"),
           uiOutput("selected_project_ui"),
-          hr(),
           uiOutput("project_gallery_ui"),
+          height="700px",
+          max_height = "700px",
           full_screen = TRUE
         )
       )
@@ -347,17 +328,54 @@ server <- function(input, output, session) {
   
   # value box with quantified metrics
   
-  output$eval_metrics <- renderText({
+  output$eval_metrics <- renderUI({
     
     dat <- projects_reactive()
     
     barrier_count <- sum(dat$barriers_removed,na.rm=T)
     
-    str_c("Barriers Removed: ", barrier_count)
+    miles_reconnected <- round(sum(dat$stream_miles_reconnected,na.rm=T))
     
+    floodplain_reconnect <- round(sum(dat$floodplain_reconnect,na.rm=T))
+    
+    enhancements <- round(sum(dat$enhancement_structures,na.rm=T))
+    
+    riparian_acres <- round(sum(dat$riparian_area,na.rm=T))
+    
+    streambank_feet <- round(sum(dat$streambank_linearfeet,na.rm=T))
+    
+    flow_restored <- round(sum(dat$flow_restored_miles,na.rm=T))
+    
+    wetland_acres <- round(sum(dat$wetland_acres,na.rm=T))
+    
+    HTML(str_c(barrier_count," Barriers Removed",
+          "<br>",
+          miles_reconnected," Stream Miles Reconnected",
+          "<br>",
+          floodplain_reconnect," Acres of Floodplain Reconnected",
+          "<br>",
+          enhancements, " Enhancement Structures Placed",
+          "<br>",
+          riparian_acres, " Acres of Riparian Area Affected",
+          "<br>",
+          streambank_feet, " Linear Feet of Streambank Stabilized",
+          "<br>",
+          flow_restored, " Miles of Stream Restored to Perennial Flow",
+          "<br>",
+          wetland_acres, " Acres of Wetland Affected")
+    )
     
   })
 
+  output$funding_summary <- renderUI({
+    
+    dat <- projects_reactive()
+    
+    fund_amount <- sum(dat$award_amount,na.rm=T)
+    
+    str_c(dollar(fund_amount), " Awarded")
+    
+  })
 
   output$project_map <- renderLeaflet({
     dat <- projects_reactive()
