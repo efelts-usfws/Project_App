@@ -39,10 +39,28 @@ projects.dat <- read_rds("shiny_pieces/project_table") %>%
   mutate(project_status = case_when(
     project_state == "Implementation Completed" ~ "Completed",
     TRUE ~ "Active"
-  ))
+  ),
+  partner_agency=ifelse(is.na(partner_agency),"None",partner_agency))
 
 
 
+
+
+# make a vector of managers
+
+manager_vector <- projects.dat %>% 
+  distinct(managing_org) %>% 
+  arrange(managing_org) %>% 
+  pull(managing_org)
+
+# make a vector of partners
+
+partner_vector <- projects.dat %>%
+  separate_rows(partner_agency, sep = ",") %>%
+  mutate(partner_agency = trimws(partner_agency)) %>%
+  distinct(partner_agency) %>%
+  arrange(partner_agency) %>%
+  pull(partner_agency)
 
 
 # make a vector of project types
@@ -236,6 +254,24 @@ ui <- page_navbar(
             `live-search` = TRUE
           )
         ),
+        pickerInput("managing_org_filter",
+                    label="Choose Managing Organization",
+                    choices=manager_vector,
+                    selected=manager_vector,
+                    multiple=T,
+                    options = list(
+                      `actions-box` = TRUE,
+                      `live-search` = TRUE
+                    )),
+        pickerInput("partner_filter",
+                    label="Choose Partner(s)",
+                    choices=partner_vector,
+                    selected=partner_vector,
+                    multiple=T,
+                    options = list(
+                      `actions-box` = TRUE,
+                      `live-search` = TRUE
+                    )),
         pickerInput("projecttype_filter",
           label = "Choose Project Type",
           choices = projecttype_vector,
@@ -301,22 +337,28 @@ ui <- page_navbar(
 server <- function(input, output, session) {
   
   projects_reactive <- reactive({
-    req(input$primary_species_filter, input$idfg_region_filter, input$projecttype_filter)
+    req(input$primary_species_filter, input$idfg_region_filter, input$projecttype_filter,
+        input$managing_org_filter,input$partner_filter)
 
     projects.dat %>%
       filter(
         primary_species %in% input$primary_species_filter,
-        idfg_region %in% input$idfg_region_filter
+        idfg_region %in% input$idfg_region_filter,
+        managing_org %in% input$managing_org_filter
       ) %>%
       rowwise() %>%
       filter(any(trimws(unlist(strsplit(project_category, ","))) %in% input$projecttype_filter)) %>%
+      ungroup() %>% 
+      rowwise() %>% 
+      filter(
+          any(trimws(unlist(strsplit(partner_agency, ","))) %in% input$partner_filter)
+      ) %>% 
       ungroup()
   })
   
   # render picker input of project names that
   # are included given the filters selected
-  
-  picker_just_rendered <- reactiveVal(FALSE)
+ 
   
   output$ind_project_filter <- renderUI({
     
@@ -328,8 +370,7 @@ server <- function(input, output, session) {
       arrange(project_name) %>% 
       pull(project_name)
     
-    picker_just_rendered(TRUE) 
-    
+
     pickerInput(
       "project_filter",
       label = "Choose a Project",
@@ -573,11 +614,7 @@ server <- function(input, output, session) {
   observeEvent(input$project_filter, {
     req(nzchar(input$project_filter))
     
-    # skip if this fire was caused by a fresh render
-    if (isTRUE(picker_just_rendered())) {
-      picker_just_rendered(FALSE)
-      return()
-    }
+    
     
     selected_project(input$project_filter)
     current_photo_index(NULL)
@@ -724,6 +761,30 @@ server <- function(input, output, session) {
     current_photo_index(new_i)
     show_photo_modal(new_i)
   })
+  
+  # reset selected project when filters change
+  observeEvent(
+    list(
+      input$primary_species_filter,
+      input$idfg_region_filter,
+      input$projecttype_filter,
+      input$managing_org_filter,
+      input$partner_filter
+    ),
+    {
+      selected_project(NULL)
+      current_photo_index(NULL)
+
+      leafletProxy("project_map") %>%
+        clearGroup("selection")
+      
+      
+      
+      
+      updatePickerInput(session, "project_filter", selected = character(0))
+    },
+    ignoreInit = TRUE
+  )
 
 }
 
