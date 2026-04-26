@@ -379,29 +379,22 @@ server <- function(input, output, session) {
  
   
   output$ind_project_filter <- renderUI({
-    
-    req(projects_reactive())
-    
     dat <- projects_reactive()
     
-    project_vector <- dat %>% 
-      arrange(project_name) %>% 
+    project_vector <- dat |> 
+      arrange(project_name) |> 
       pull(project_name)
     
-
     pickerInput(
       "project_filter",
       label = "Choose a Project",
-      choices = project_vector,
-      selected = character(0),
+      choices = c("Search or choose a project" = "", project_vector),
+      selected = "",
       multiple = FALSE,
       options = list(
-        `live-search` = TRUE,
-        title = "Search or choose a project",
-        `none-selected-text` = "Search or choose a project"
+        `live-search` = TRUE
       )
     )
-    
   })
   
   # project count after filters to 
@@ -630,14 +623,12 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$project_filter, {
-    req(nzchar(input$project_filter))
-    
-    
+    req(input$project_filter != "")
     
     selected_project(input$project_filter)
     current_photo_index(NULL)
     
-    selected_data <- projects.dat |>
+    selected_data <- projects_reactive() |>
       filter(project_name == input$project_filter)
     
     leafletProxy("project_map") |>
@@ -651,8 +642,6 @@ server <- function(input, output, session) {
         group = "selection"
       )
   }, ignoreInit = TRUE)
-  
-  
   
   output$project_gallery_ui <- renderUI({
     if (is.null(selected_project())) {
@@ -674,9 +663,13 @@ server <- function(input, output, session) {
           
           card(
             style = "padding:8px;",
-            actionLink(
-              inputId = paste0("photo_click_", i),
-              label = tags$img(
+            tags$a(
+              href = "#",
+              onclick = sprintf(
+                "Shiny.setInputValue('photo_selected', %s, {priority: 'event'}); return false;",
+                i
+              ),
+              tags$img(
                 src = file.path("project_photos", this_photo$photo_file),
                 style = "width:100%; height:180px; object-fit:cover; border-radius:8px;"
               )
@@ -738,20 +731,10 @@ server <- function(input, output, session) {
     )
   }
   
-  # set up observers for photo clicks
-  observeEvent(selected_project(), {
-    photo_dat <- selected_project_photos()
-    if (nrow(photo_dat) == 0) return()
-    
-    for (i in seq_len(nrow(photo_dat))) {
-      local({
-        ii <- i
-        observeEvent(input[[paste0("photo_click_", ii)]], {
-          current_photo_index(ii)
-          show_photo_modal(ii)
-        }, ignoreInit = TRUE)
-      })
-    }
+  observeEvent(input$photo_selected, {
+    i <- as.integer(input$photo_selected)
+    current_photo_index(i)
+    show_photo_modal(i)
   }, ignoreInit = TRUE)
   
   # next button
@@ -799,7 +782,7 @@ server <- function(input, output, session) {
       
       
       
-      updatePickerInput(session, "project_filter", selected = character(0))
+      updatePickerInput(session, "project_filter", selected = "")
     },
     ignoreInit = TRUE
   )
