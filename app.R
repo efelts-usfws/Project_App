@@ -42,7 +42,9 @@ projects.dat <- read_rds("shiny_pieces/project_table") %>%
   ),
   partner_agency=ifelse(is.na(partner_agency),"None",partner_agency))
 
+# read in reference for project docs
 
+project_docs <- read_rds("shiny_pieces/project_documents.rds")
 
 
 
@@ -324,21 +326,19 @@ ui <- page_navbar(
           navset_card_tab(
             nav_panel(
               "Overview",
-              uiOutput("selected_project_ui"),
-              hr(),
-              uiOutput("project_gallery_ui")
+              uiOutput("selected_project_ui")
             ),
             nav_panel(
-              "Permitting",
-              uiOutput("project_permitting_ui")
+              "Photos",
+              uiOutput("project_gallery_ui")
             ),
             nav_panel(
               "Timeline",
               uiOutput("project_timeline_ui")
             ),
             nav_panel(
-              "Funding",
-              uiOutput("project_funding_ui")
+              "Permitting",
+              uiOutput("project_permitting_ui")
             )
           ),
           height = "700px",
@@ -761,6 +761,89 @@ server <- function(input, output, session) {
     
     current_photo_index(new_i)
     show_photo_modal(new_i)
+  })
+  
+  # filter docs for selected project
+  
+  selected_project_docs <- reactive({
+    req(selected_project())
+    
+    project_docs |>
+      filter(
+        project_name == selected_project(),
+        doc_type == "permit"
+      )
+  })
+  
+  # track selected document
+  
+  selected_doc <- reactiveVal(NULL)
+  
+  # reset when project changes
+  
+  observeEvent(selected_project(), {
+    docs <- selected_project_docs()
+    
+    if (nrow(docs) > 0) {
+      selected_doc(docs$doc_file[1])
+    } else {
+      selected_doc(NULL)
+    }
+  })
+  
+  output$project_permitting_ui <- renderUI({
+    if (is.null(selected_project())) {
+      return(p("Select a project to view permitting documents."))
+    }
+    
+    docs <- selected_project_docs()
+    
+    if (nrow(docs) == 0) {
+      return(p("No permitting documents available."))
+    }
+    
+    tagList(
+      pickerInput(
+        "permit_doc_select",
+        "Select Permit Document",
+        choices = setNames(docs$doc_file, docs$doc_title),
+        selected = docs$doc_file[1],
+        multiple = FALSE
+      ),
+      
+      uiOutput("permit_pdf_viewer")
+    )
+  })
+  
+  observeEvent(input$permit_doc_select, {
+    selected_doc(input$permit_doc_select)
+  }, ignoreInit = TRUE)
+  
+  output$permit_pdf_viewer <- renderUI({
+    req(selected_doc())
+    
+    pdf_src <- file.path("project_docs", "permits", selected_doc())
+    
+    tagList(
+      tags$a(
+        href = pdf_src,
+        target = "_blank",
+        download = selected_doc(),
+        class = "btn btn-sm btn-primary",
+        "Download PDF"
+      ),
+      
+      tags$iframe(
+        src = pdf_src,
+        style = "
+        width: 100%;
+        height: 560px;
+        border: 1px solid #ddd;
+        margin-top: 10px;
+        border-radius: 6px;
+      "
+      )
+    )
   })
   
   # reset selected project when filters change
