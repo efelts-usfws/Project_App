@@ -425,7 +425,7 @@ st_write(projects.df,
 
 # identify URL id for this survey
 
-item2 <- gis_conn$content$get("88ea613777b1449bb7b8948ba9c72404")
+item2 <- gis_conn$content$get("0af2d9274cba490bb5d3274ff1a29b4a")
 
 # main info from this one is stored as a feature layer
 
@@ -469,10 +469,14 @@ funding.df <- py_to_r(funding.df_py) %>%
   select(project_id,reporting_year,action_type,funding_source,funding_details,funding_date,
          funding_amount)  
 
+### note that now match is table 2 in this
+### survey, not incorporating yet
+
+
 
 # planning updates
 
-planning <- item2$tables[[2]]
+planning <- item2$tables[[3]]
 
 # Existing table extraction
 
@@ -489,7 +493,7 @@ planning.df <- py_to_r(planning.df_py) %>%
 
 # requirements updates
 
-requirements <- item2$tables[[3]]
+requirements <- item2$tables[[4]]
 
 # Existing table extraction
 
@@ -508,7 +512,7 @@ requirements.df <- py_to_r(requirements.df_py) %>%
 
 # implementations updates
 
-implementations <- item2$tables[[4]]
+implementations <- item2$tables[[5]]
 
 # Existing table extraction
 
@@ -518,33 +522,37 @@ implementations.df_py <- pandas$DataFrame(implementations.attrs_clean)
 
 implementations.df <- py_to_r(implementations.df_py) %>% 
   mutate(implementation_date=as_datetime(as.numeric(implementation_action_date)/1000,tz="UTC"),
-         action_type="implementation") %>% 
+         action_type="implementation",
+         bda_logical=if_else(implementation_action_annual=="beaver_dam_analogue",
+                             T,F),
+         enhancement_structure_count=ifelse(bda_logical==T,
+                                            1,enhancement_structure_count)) %>% 
   inner_join(main.df,by=c("parentglobalid"="globalid")) %>% 
   select(project_id,reporting_year,action_type,
+         implementation_type=implementation_action_annual,
          implementation_date,
          implementation_lat=implementation_action_lat,
          implementation_long=implementation_action_long,
          barrier_action_type:enhancement_structure_count)
 
-# delays updates
-
-delays <- item2$tables[[5]]
-
-# Existing table extraction
-
-delays.attrs_clean <- py$safe_extract_attributes(delays)
-
-delays.df_py <- pandas$DataFrame(delays.attrs_clean)
-
-delays.df <- py_to_r(delays.df_py) %>% 
-  mutate(delay_date=as_datetime(as.numeric(delay_date)/1000,tz="UTC"),
-         action_type="delay") %>% 
-  inner_join(main.df,by=c("parentglobalid"="globalid")) %>% 
-  select(project_id,reporting_year,action_type,
-         delay_date,delay_status,delay_details)
+# now additional photos, associated with actions
+# are in table 6; need to build that code in here later
 
 # bring in additional photos that were added in
 # annual updates
+
+# first make a key to relate all the way back
+# to project level - these photos here will
+# be associated with an action
+
+implementation_parent_key <- py_to_r(implementations.df_py) %>% 
+  select(implementation_globalid=globalid,
+         project_globalid=parentglobalid,
+         implementation_action=implementation_action_annual) %>% 
+  left_join(main.df,by=c("project_globalid"="globalid")) %>% 
+  select(implementation_globalid,project_id,
+         implementation_action)
+  
 
 update_photorepeat.table <- item2$tables[[6]]
 
@@ -573,16 +581,36 @@ update_downloaded.photos.df <- py_to_r(pandas$DataFrame(downloaded.photos))
 
 update_photo_reference.table <- update_photorepeat.df %>% 
   left_join(update_photorepeat.attachments.df,by="objectid") %>% 
-  select(project_globalid=parentglobalid,
+  select(implementation_globalid=parentglobalid,
          photo_file=attachment_name,
          caption=photo_caption,
          credit=credit) %>% 
-  group_by(project_globalid) %>% 
+  group_by(implementation_globalid) %>% 
   mutate(photo_order=row_number()) %>% 
-  inner_join(main.df,by=c("project_globalid"="globalid")) %>% 
+  inner_join(implementation_parent_key,by="implementation_globalid") %>% 
   ungroup() %>% 
-  select(project_name,photo_order,photo_file,
+  mutate(project_name=str_replace_all(project_id,"_"," ")) %>% 
+  select(project_name,implementation_action,photo_order,photo_file,
          caption,credit)
+
+
+# delays updates
+
+delays <- item2$tables[[7]]
+
+# Existing table extraction
+
+delays.attrs_clean <- py$safe_extract_attributes(delays)
+
+delays.df_py <- pandas$DataFrame(delays.attrs_clean)
+
+delays.df <- py_to_r(delays.df_py) %>% 
+  mutate(delay_date=as_datetime(as.numeric(delay_date)/1000,tz="UTC"),
+         action_type="delay") %>% 
+  inner_join(main.df,by=c("parentglobalid"="globalid")) %>% 
+  select(project_id,reporting_year,action_type,
+         delay_date,delay_status,delay_details)
+
 
 ################################################################
 # at this point all the information is pulled in, just need to #
@@ -610,12 +638,14 @@ project_funding_summary <- funding.df %>%
 # relevant metrics
 
 project_metrics.summary <- implementations.df %>% 
+  mutate(across(floodplain_reconnect_acres:wetland_affected_metric,as.numeric)) %>% 
   group_by(project_id) %>%
-  summarize(barriers_removed=sum(!barrier_action_type==""),
+  summarize(barriers_removed=sum(implementation_type=="barrier_removal"),
             stream_miles_reconnected=sum(barrier_removal_miles,na.rm=T),
             stream_miles_restored=sum(stream_restoration_miles,na.rm=T),
             floodplain_reconnect=sum(floodplain_reconnect_acres,na.rm=T),
             enhancement_structures=sum(enhancement_structure_count,na.rm=T),
+            bda_count=sum(implementation_type=="beaver_dam_analogue"), 
             riparian_area=sum(riparian_affected_metric,na.rm=T),
             streambank_linearfeet=sum(streambank_affected_metric,na.rm=T),
             flow_restored_miles=sum(flowmanagement_metric,na.rm=T),
@@ -686,3 +716,23 @@ projects_shiny.df <- projects.df %>%
 saveRDS(projects_shiny.df,"shiny_pieces/project_table")
 
 saveRDS(photos.bind,"shiny_pieces/photo_table")
+
+# for now making a placeholder to add metadata related
+# to project documents
+
+project_docs <- tibble::tribble(
+  ~project_name, ~doc_type, ~doc_title, ~doc_file,
+  "Tower Creek Aquatic Organism Passage", "permit", "Example Permit PDF", "f4562.pdf",
+  "Tower Creek Aquatic Organism Passage", "permit", "Example Permit PDF 2", "Job_Description_-_Stock_Assessment_Scientist_-_March_2026.pdf"
+)
+
+saveRDS(project_docs, "shiny_pieces/project_documents.rds")
+
+# Here, pull together project specific points for those
+# examples where there is more than one point of
+# interest such as culvert removals, AOP evals, etc.
+
+# right now the AOP points just coming over via excel sheet
+
+aop_pts1 <- read_excel("data-raw/AOP spokane24sited_data to eli.xlsx",
+                       sheet="all sites")
