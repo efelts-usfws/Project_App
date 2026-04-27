@@ -46,6 +46,9 @@ projects.dat <- read_rds("shiny_pieces/project_table") %>%
 
 project_docs <- read_rds("shiny_pieces/project_documents.rds")
 
+# read in nested project points
+
+project_specific_points <- read_rds("shiny_pieces/project_specific_points.rds")
 
 
 # make a vector of managers
@@ -178,8 +181,30 @@ leaflet_base <- leaflet() %>%
   )
 leaflet_base
 
+test<- project_specific_points %>% 
+  filter(barrier_action_type=="culvert")
+
+test_bb <- st_bbox(test)
+
+leaflet_base2 <-  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldTopoMap, group = "Topographic") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Imagery") %>%
+  addProviderTiles(providers$OpenStreetMap.Mapnik, group = "Roads") %>%
+  addMouseCoordinates() %>%
+  addMiniMap(
+    tiles = providers$OpenStreetMap.Mapnik,
+    toggleDisplay = TRUE,
+    position = "bottomright",
+    width = 180,
+    height = 180,
+    zoomLevelOffset = -6
+  )  %>% 
+  addLayersControl(
+    baseGroups = c("Topographic", "Imagery", "Roads")
+  ) 
+
 status_pal <- colorFactor(
-  palette = c("blue", "green"),
+  palette = c("#2C7FB8", "#2E7D32"),
   levels = c("Completed", "Active")
 )
 
@@ -323,7 +348,7 @@ ui <- page_navbar(
           full_screen = T
         ),
         card(
-          card_header("Selected Project"),
+          card_header(uiOutput("selected_project_header")),
           navset_card_tab(
             nav_panel(
               "Overview",
@@ -334,8 +359,8 @@ ui <- page_navbar(
               uiOutput("project_gallery_ui")
             ),
             nav_panel(
-              "Timeline",
-              uiOutput("project_timeline_ui")
+              "Project Specific Map",
+              leafletOutput("project_specific_map")
             ),
             nav_panel(
               "Permitting",
@@ -373,6 +398,43 @@ server <- function(input, output, session) {
           any(trimws(unlist(strsplit(partner_agency, ","))) %in% input$partner_filter)
       ) %>% 
       ungroup()
+  })
+  
+  output$selected_project_header <- renderUI({
+    if (is.null(selected_project())) {
+      return("Selected Project")
+    }
+    
+    dat <- selected_project_data()
+    req(nrow(dat) == 1)
+    
+    x <- dat[1, ]
+    
+    tags$div(
+      style = "
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    ",
+      
+      tags$span(
+        style = "
+        font-weight: 600;
+        flex-grow: 1;
+      ",
+        x$project_name
+      ),
+      
+      tags$span(
+        class = "badge rounded-pill",
+        style = paste0(
+          "background-color:", status_pal(x$project_status),
+          "; color: white;"
+        ),
+        x$project_status
+      )
+    )
   })
   
   # render picker input of project names that
@@ -473,7 +535,7 @@ server <- function(input, output, session) {
       "Enhancement Structures", round(sum(dat$enhancement_structures, na.rm = TRUE)),
       "Riparian Acres", round(sum(dat$riparian_area, na.rm = TRUE)),
       "Streambank Feet", round(sum(dat$streambank_linearfeet, na.rm = TRUE)),
-      "Flow Restored Miles", round(sum(dat$flow_restored_miles, na.rm = TRUE)),
+      "Miles of Flow Restored", round(sum(dat$flow_restored_miles, na.rm = TRUE)),
       "Wetland Acres", round(sum(dat$wetland_acres, na.rm = TRUE))
     )
     
@@ -814,6 +876,39 @@ server <- function(input, output, session) {
       
       uiOutput("permit_pdf_viewer")
     )
+  })
+  
+  # filter docs for selected project
+  
+  selected_project_points <- reactive({
+    req(selected_project())
+    
+    project_specific_points |>
+      filter(
+        project_name == selected_project()
+      )
+  })
+  
+  output$project_specific_map <- renderLeaflet({
+    
+    project.dat <- projects_reactive() %>% 
+      filter(project_name==selected_project())
+    
+    dat <- selected_project_points()
+  
+    zm_level <- ifelse(project.dat$project_name=="Spokane River Watershed Aquatic Organism Passage Evaluation",
+                       9,12)
+    
+    leaflet_base2 %>% 
+      addCircleMarkers(data=dat) %>% 
+      addPolylines(
+        data = streams.sf,
+        label = ~ str_c(name),
+        group = "Streams"
+      ) %>% 
+      setView(lng = project.dat$longitude, 
+              lat = project.dat$latitude, zoom = zm_level) 
+    
   })
   
   observeEvent(input$permit_doc_select, {
