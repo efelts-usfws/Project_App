@@ -5,6 +5,7 @@ library(readxl)
 library(leaflet)
 library(leafpm)
 library(leafem)
+library(leaflet.extras)
 library(leaflet.extras2)
 library(bslib)
 library(bsicons)
@@ -49,6 +50,10 @@ project_docs <- read_rds("shiny_pieces/project_documents.rds")
 # read in nested project points
 
 project_specific_points <- read_rds("shiny_pieces/project_specific_points.rds")
+
+# read in supporting documents
+
+supporting_docs <- read_excel("shiny_pieces/document_links.xlsx")
 
 
 # make a vector of managers
@@ -178,13 +183,11 @@ leaflet_base <- leaflet() %>%
     width = 180,
     height = 180,
     zoomLevelOffset = -6
-  )
+  ) %>% 
+  addResetMapButton()
 leaflet_base
 
-test<- project_specific_points %>% 
-  filter(barrier_action_type=="culvert")
-
-test_bb <- st_bbox(test)
+project_specific_streams <- read_rds("shiny_pieces/project_specific_streams.sf")
 
 leaflet_base2 <-  leaflet() %>% 
   addProviderTiles(providers$Esri.WorldTopoMap, group = "Topographic") %>%
@@ -200,8 +203,10 @@ leaflet_base2 <-  leaflet() %>%
     zoomLevelOffset = -6
   )  %>% 
   addLayersControl(
-    baseGroups = c("Topographic", "Imagery", "Roads")
+    baseGroups = c("Topographic", "Imagery", "Roads"),
+    options = layersControlOptions(collapsed = FALSE)
   ) 
+
 
 status_pal <- colorFactor(
   palette = c("#2C7FB8", "#2E7D32"),
@@ -365,6 +370,10 @@ ui <- page_navbar(
             nav_panel(
               "Permitting",
               uiOutput("project_permitting_ui")
+            ),
+            nav_panel(
+              "Supporting Documents",
+              uiOutput("project_docs_ui")
             )
           ),
           height = "700px",
@@ -880,32 +889,74 @@ server <- function(input, output, session) {
   
   # filter docs for selected project
   
+  # selected_project_points <- reactive({
+  #   req(selected_project())
+  #   
+  #   project_specific_points |>
+  #     filter(
+  #       project_name == selected_project()
+  #     )
+  # })
+  # 
+  
   selected_project_points <- reactive({
     req(selected_project())
     
-    project_specific_points |>
-      filter(
-        project_name == selected_project()
+    pts <- project_specific_points |>
+      dplyr::filter(project_name == selected_project()) %>% 
+      mutate(popup_type=case_when(
+        specifics_category=="barrier_removal" ~ str_to_title(barrier_action_type),
+        TRUE ~ specifics_category
+      ))
+    
+    if (nrow(pts) > 0) {
+      return(pts)
+    } else {
+      return(
+        projects.dat |>
+          dplyr::filter(project_name == selected_project()) %>% 
+          mutate(popup_type=project_category)
       )
+    }
+  })
+  
+  project_stream_reactive <- reactive({
+    
+    req(selected_project())
+    
+    project_specific_streams %>% 
+      filter(project_name == selected_project())
+    
   })
   
   output$project_specific_map <- renderLeaflet({
+    
+    req(selected_project())
     
     project.dat <- projects_reactive() %>% 
       filter(project_name==selected_project())
     
     dat <- selected_project_points()
   
+    stream_dat <- project_stream_reactive()
+    
     zm_level <- ifelse(project.dat$project_name=="Spokane River Watershed Aquatic Organism Passage Evaluation",
                        9,12)
     
     leaflet_base2 %>% 
-      addCircleMarkers(data=dat) %>% 
       addPolylines(
         data = streams.sf,
         label = ~ str_c(name),
         group = "Streams"
       ) %>% 
+      addPolylines(data=stream_dat,
+                   color="cyan",
+                   label=~str_c(NAME)) %>% 
+      addCircleMarkers(data=dat,
+                       popup=~str_c("<b>","Project Type: ","</b>",popup_type),
+                       fillColor="magenta",
+                       color="magenta",
+                       radius=9) %>% 
       setView(lng = project.dat$longitude, 
               lat = project.dat$latitude, zoom = zm_level) 
     
@@ -939,6 +990,31 @@ server <- function(input, output, session) {
         border-radius: 6px;
       "
       )
+    )
+  })
+  
+  output$project_docs_ui <- renderUI({
+    req(selected_project())
+    
+    docs <- supporting_docs |>
+      dplyr::filter(project_name == selected_project())
+    
+    if (nrow(docs) == 0) {
+      return(tags$p(class = "text-muted", "No documents linked for this project."))
+    }
+    
+    tagList(
+      lapply(seq_len(nrow(docs)), \(i) {
+        tags$div(
+          class = "mb-2",
+          tags$a(
+            href = docs$link[i],
+            target = "_blank",
+            rel = "noopener noreferrer",
+            docs$document_name[i]
+          )
+        )
+      })
     )
   })
   
