@@ -734,5 +734,42 @@ saveRDS(project_docs, "shiny_pieces/project_documents.rds")
 
 # right now the AOP points just coming over via excel sheet
 
-aop_pts1 <- read_excel("data-raw/AOP spokane24sited_data to eli.xlsx",
-                       sheet="all sites")
+aop_pts1 <- read_excel("data-raw/AOP spokane2024sites_data to eli.xlsx",
+                       sheet="all sites") %>% 
+  mutate(project_name="Spokane River Watershed Aquatic Organism Passage Evaluation",
+         specifics_category="AOP Evaluation") %>%
+  st_as_sf(coords=c("lon",
+                    "lat"),
+           crs=st_crs(projects_shiny.df)) %>% 
+  select(project_name,specifics_category,
+         year=Year)
+  
+# put the implementation actions that have their own waypoints
+# into similar format
+
+implementation_points <- implementations.df %>% 
+  filter(!is.na(implementation_lat)) %>% 
+  st_as_sf(coords=c("implementation_long",
+                    "implementation_lat"),
+           crs=st_crs(projects_shiny.df)) %>% 
+  mutate(project_name=str_replace_all(project_id,"_"," ")) %>% 
+  select(project_name,specifics_category=implementation_type,
+         barrier_action_type,
+         year=reporting_year) %>% 
+  bind_rows(aop_pts1)
+
+saveRDS(implementation_points,
+        "shiny_pieces/project_specific_points.rds")
+
+# make a layer of project-specific streams so 
+# they can be highlighted on zoomed map
+
+project_streams.sf <- projects_shiny.df %>% 
+  st_drop_geometry() %>% 
+  select(project_name,LLID) %>% 
+  left_join(idfg_streams.sf,by="LLID") %>% 
+  st_as_sf() %>% 
+  group_by(project_name) %>% 
+  slice_head(n=1)
+
+saveRDS(project_streams.sf,"shiny_pieces/project_specific_streams.sf")
